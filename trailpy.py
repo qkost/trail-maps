@@ -406,7 +406,7 @@ def osm_locations(extents):
         water["label"] = "water"
         water["color"] = "C0"
     except ox._errors.InsufficientResponseError:
-        peaks = pd.DataFrame()
+        water = pd.DataFrame()
 
     return peaks, water
 
