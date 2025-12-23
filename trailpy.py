@@ -15,6 +15,7 @@ import numpy as np
 import pandas as pd
 
 import os
+import glob
 
 from bmi_topography import Topography
 import rioxarray as rxr
@@ -26,7 +27,7 @@ from rasterio.errors import RasterioIOError
 
 ARG_PARSER = argparse.ArgumentParser(description="Visualize trail GPX data")
 
-ARG_PARSER.add_argument("gpx_file", type=str, help="File path to GPX file")
+ARG_PARSER.add_argument("gpx_files", type=str, help="File path to GPX file")
 
 ARG_PARSER.add_argument(
     "--trail_scale_fraction",
@@ -83,6 +84,42 @@ ARG_PARSER.add_argument(
     help="Ship showing plot",
     action="store_true",
 )
+
+
+def load_gpxs(gpx_files):
+    """
+    Load any number of GPX file data
+
+    Parameters
+    ----------
+    gpx_files : list of str
+        File path to GPX files
+
+    Returns
+    -------
+    tracks : list
+        Numby array of shape (ntracks, nsegments, 3)
+    extents : dict
+        Dictionary with 'north', 'east', 'south', and 'west' keys to define the extents
+        of the tracks
+    """
+
+    tracks = []
+    for gpx_file in gpx_files:
+        _, new_tracks, _ = load_gpx(gpx_file)
+        tracks.extend(new_tracks)
+
+    combined = np.concatenate(tracks)
+
+    # Get the extreme values for the extents
+    extents = {
+        "south": combined[..., 1].min(),
+        "north": combined[..., 1].max(),
+        "west": combined[..., 0].min(),
+        "east": combined[..., 0].max(),
+    }
+
+    return tracks, extents
 
 
 def load_gpx(gpx_file):
@@ -374,7 +411,7 @@ def osm_locations(extents):
     return peaks, water
 
 
-def main(gpx_file, trail_scale_fraction, dem_type, show_peaks=True, show_water=True):
+def main(gpx_files, trail_scale_fraction, dem_type, show_peaks=True, show_water=True):
     """
     Create visualization of Trail
 
@@ -391,15 +428,19 @@ def main(gpx_file, trail_scale_fraction, dem_type, show_peaks=True, show_water=T
     show_water : bool, optional
         Flag to show water on map. Defaults to True
     """
+    if len(gpx_files) == 1:
+        name = os.path.basename(gpx_files[0]).replace(".gpx", "")
+    else:
+        name = os.path.basename(os.path.dirname(gpx_files[0]))
 
     # Load GPX data
-    gpx, tracks, extents = load_gpx(gpx_file)
+    tracks, extents = load_gpxs(gpx_files)
 
     # Extend extents
     extents = extend_extents(extents, scale=1 / trail_scale_fraction)
 
     # Request topography data
-    output_dir = os.path.dirname(gpx_file)
+    output_dir = os.path.dirname(gpx_files[0])
     topo_data, filename_topo = retrieve_topo(extents, output_dir, dem_type=dem_type)
 
     # Perform hillshade
@@ -436,7 +477,7 @@ def main(gpx_file, trail_scale_fraction, dem_type, show_peaks=True, show_water=T
         # line = colored_line_plot(ax, x, y, z, cmap="plasma", norm=None, linewidth=6)
         scatter = ax.scatter(x, y, c=z, cmap="plasma", vmin=alt_min, vmax=alt_max)
     ax.set_aspect("equal")
-    ax.set_title(os.path.basename(gpx_file))
+    ax.set_title(name)
     cbar = fig.colorbar(scatter)
     cbar.set_label("Altitude [m]")
 
@@ -470,14 +511,14 @@ def main(gpx_file, trail_scale_fraction, dem_type, show_peaks=True, show_water=T
     ax.set_ylim([extents["south"], extents["north"]])
     fig.tight_layout()
 
-    output_filename = gpx_file.replace(".gpx", ".png")
+    output_filename = f"{name}.png"
     fig.savefig(output_filename)
 
 
 if __name__ == "__main__":
     ARGS = ARG_PARSER.parse_args()
     main(
-        ARGS.gpx_file,
+        glob.glob(ARGS.gpx_files),
         ARGS.trail_scale_fraction,
         ARGS.dem_type,
         show_peaks=ARGS.show_peaks,
