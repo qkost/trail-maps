@@ -239,7 +239,7 @@ def hillshade(in_file, out_file):
     return raster_data
 
 
-def colored_line_plot(ax, x, y, c_values, cmap="viridis", norm=None):
+def colored_line_plot(ax, x, y, c_values, cmap="viridis", norm=None, linewidth=2):
     """
     Plots a line with color varying based on c_values.
 
@@ -250,11 +250,13 @@ def colored_line_plot(ax, x, y, c_values, cmap="viridis", norm=None):
     y :
         Y coordinates.
     c_values : array-like, optional
-        Values used for coloring (same size as x and y). Defaults to "viridis"
-    cmap : str or Colormap
-        Colormap to use.
-    norm : Normalize
+        Values used for coloring (same size as x and y)
+    cmap : str or Colormap, optional
+        Colormap to use. Defaults to 'viridis'
+    norm : Normalize, optional
         Color normalization instance. If None, linear scaling is used.
+    linewith : float, optional
+        Width of line
     """
     # 1. Create a list of (x, y) points
     points = np.array([x, y]).T.reshape(-1, 1, 2)
@@ -270,7 +272,7 @@ def colored_line_plot(ax, x, y, c_values, cmap="viridis", norm=None):
     lc.set_array(c_values)
 
     # 5. Set line properties (optional)
-    lc.set_linewidth(2)
+    lc.set_linewidth(linewidth)
 
     # 6. Get the current axis and add the collection to the plot
     line = ax.add_collection(lc)
@@ -361,21 +363,22 @@ def main(gpx_file, trail_scale_fraction, dem_type):
 
     # Set maximum slope to nan
     slope = hill_data.values.squeeze().astype(np.float64)
-    lakes = slope == 255
-    slope[lakes] = np.nan
-    lakes = lakes.astype(np.float64)
-    lakes[lakes == False] = np.nan
 
     # Find interesing markers
     peak_df, water_df = osm_locations(extents)
 
     fig, ax = plt.subplots(figsize=(12, 12))
-    ctour = ax.contourf(
-        hill_data.x.values,
-        hill_data.y.values,
+
+    x = hill_data.x.values
+    y = hill_data.y.values
+
+    dx = (x[1] - x[0]) / 2.0
+    dy = (y[1] - y[0]) / 2.0
+    imshow_extent = [x[0] - dx, x[-1] + dx, y[0] - dy, y[-1] + dy]
+    ax.imshow(
         slope,
+        extent=imshow_extent,
         cmap="Greys",
-        levels=30,
     )
 
     interpolator = RegularGridInterpolator(
@@ -385,17 +388,13 @@ def main(gpx_file, trail_scale_fraction, dem_type):
         x = track[:, 0]
         y = track[:, 1]
         track_alt = interpolator(np.stack([x, y]).T)
-        line = colored_line_plot(
-            ax,
-            x,
-            y,
-            track_alt,
-            cmap="plasma",
-            norm=None,
-        )
+        # line = colored_line_plot(
+        #     ax, x, y, track_alt, cmap="plasma", norm=None, linewidth=4
+        # )
+        scatter = ax.scatter(x, y, c=track_alt, cmap="plasma")
     ax.set_aspect("equal")
     ax.set_title(os.path.basename(gpx_file))
-    cbar = fig.colorbar(line)
+    cbar = fig.colorbar(scatter)
     cbar.set_label("Altitude [m]")
 
     # Plot points of interest
@@ -403,7 +402,7 @@ def main(gpx_file, trail_scale_fraction, dem_type):
         x, y = water["geometry"].exterior.xy
         xc = water["geometry"].centroid.x
         yc = water["geometry"].centroid.y
-        ax.fill(x, y, color=water["color"])
+        ax.fill(x, y, color=water["color"], alpha=0.5)
         # ax.text(xc, yc, water["name"], color="white", va="center", ha="center")
     for _, peak in peak_df.iterrows():
         ax.plot(
@@ -422,6 +421,8 @@ def main(gpx_file, trail_scale_fraction, dem_type):
             va="top",
             ha="center",
         )
+    ax.set_xlim([extents["west"], extents["east"]])
+    ax.set_ylim([extents["south"], extents["north"]])
     fig.tight_layout()
 
     output_filename = gpx_file.replace(".gpx", ".png")
