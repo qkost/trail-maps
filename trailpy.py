@@ -12,11 +12,8 @@ import argparse
 import gpxpy
 import matplotlib.pyplot as plt
 import numpy as np
-import pandas as pd
 
 import os
-import pprint
-import subprocess
 
 from bmi_topography import Topography
 import rioxarray as rxr
@@ -321,6 +318,8 @@ def osm_locations(extents):
     water = ox.features.features_from_bbox(
         (extents["west"], extents["south"], extents["east"], extents["north"]), tags
     )
+    if "name" not in water.columns:
+        water["name"] = None
     water = water.reset_index().dropna(subset="name").reset_index()
     # water["centroid"] = water.geometry.centroid
     water["lon"] = [geom.x for geom in water.geometry.centroid]
@@ -378,19 +377,11 @@ def main(gpx_file, trail_scale_fraction, dem_type):
         cmap="Greys",
         levels=30,
     )
-    # ax.contourf(
-    #     hill_data.x.values,
-    #     hill_data.y.values,
-    #     lakes,
-    #     cmap="Blues",
-    #     levels=0,
-    # )
 
     interpolator = RegularGridInterpolator(
         (topo_data.x.values, topo_data.y.values), topo_data.values.squeeze()
     )
     for track in tracks:
-        # ax.plot(track[:, 0], track[:, 1], color="black", linewidth=5)
         x = track[:, 0]
         y = track[:, 1]
         track_alt = interpolator(np.stack([x, y]).T)
@@ -431,11 +422,10 @@ def main(gpx_file, trail_scale_fraction, dem_type):
             va="top",
             ha="center",
         )
-
-    # topo_data.plot()
-    # hill_data.plot()
-    # breakpoint()
     fig.tight_layout()
+
+    output_filename = gpx_file.replace(".gpx", ".png")
+    fig.savefig(output_filename)
 
 
 if __name__ == "__main__":
