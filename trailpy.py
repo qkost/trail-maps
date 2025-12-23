@@ -22,7 +22,7 @@ from osgeo import gdal
 from matplotlib.collections import LineCollection
 from scipy.interpolate import RegularGridInterpolator
 import osmnx as ox
-
+from rasterio.errors import RasterioIOError
 
 ARG_PARSER = argparse.ArgumentParser(description="Visualize trail GPX data")
 
@@ -33,7 +33,7 @@ ARG_PARSER.add_argument(
     "-s",
     type=float,
     help="Fraction of length trail occupies",
-    default=0.8,
+    default=0.6,
 )
 
 ARG_PARSER.add_argument(
@@ -41,7 +41,7 @@ ARG_PARSER.add_argument(
     "-d",
     type=str,
     help="Source os DEM",
-    default="SRTMGL3",
+    default="USGS10m",
     choices=[
         "SRTMGL3",
         "SRTMGL1",
@@ -186,7 +186,7 @@ def extend_extents(extents_orig, scale=1, dim="deg"):
     return extents
 
 
-def retrieve_topo(extents, output_dir, dem_type="SRTMGL1"):
+def retrieve_topo(extents, output_dir, dem_type="SRTMGL1", catch_dem_err=True):
     """
     Retrieve topodata
 
@@ -199,6 +199,9 @@ def retrieve_topo(extents, output_dir, dem_type="SRTMGL1"):
         Output directory name
     dem_type : str, optional
         DEM type. Defaults to SRTMGL1
+    catch_dem_err : bool, optional
+        Flag to catch DEM unavailable error and witch to another DEM source. Defaults to
+        True
 
     Returns
     -------
@@ -215,8 +218,18 @@ def retrieve_topo(extents, output_dir, dem_type="SRTMGL1"):
     params.update({"dem_type": dem_type})
 
     location = Topography(**params)
-    location.fetch()
-    topo_data = location.load()
+    try:
+        location.fetch()
+        topo_data = location.load()
+    except RasterioIOError as err:
+        if catch_dem_err:
+            dem_type = "SRTMGL1"
+            params.update({"dem_type": dem_type})
+            location = Topography(**params)
+            location.fetch()
+            topo_data = location.load()
+        else:
+            raise RasterioIOError(err.__str__())
 
     filename = os.path.join(
         output_dir,
@@ -412,13 +425,16 @@ def main(gpx_file, trail_scale_fraction, dem_type, show_peaks=True, show_water=T
     # interpolator = RegularGridInterpolator(
     #     (topo_data.x.values, topo_data.y.values), topo_data.values.squeeze()
     # )
+    tracks_combined = np.concatenate(tracks)
+    alt_min = tracks_combined[:, 2].min()
+    alt_max = tracks_combined[:, 2].max()
     for track in tracks:
         x = track[:, 0]
         y = track[:, 1]
         z = track[:, 2]
         # track_alt = interpolator(np.stack([x, y]).T)
         # line = colored_line_plot(ax, x, y, z, cmap="plasma", norm=None, linewidth=6)
-        scatter = ax.scatter(x, y, c=z, cmap="plasma")
+        scatter = ax.scatter(x, y, c=z, cmap="plasma", vmin=alt_min, vmax=alt_max)
     ax.set_aspect("equal")
     ax.set_title(os.path.basename(gpx_file))
     cbar = fig.colorbar(scatter)
