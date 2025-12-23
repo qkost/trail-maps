@@ -12,6 +12,7 @@ import argparse
 import gpxpy
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 
 import os
 
@@ -63,6 +64,26 @@ ARG_PARSER.add_argument(
     ],
 )
 
+ARG_PARSER.add_argument(
+    "--show_peaks",
+    "-p",
+    help="Show peaks",
+    action="store_true",
+)
+
+ARG_PARSER.add_argument(
+    "--show_water",
+    "-w",
+    help="Show water",
+    action="store_true",
+)
+
+ARG_PARSER.add_argument(
+    "--skip_plot",
+    help="Ship showing plot",
+    action="store_true",
+)
+
 
 def load_gpx(gpx_file):
     """
@@ -97,14 +118,15 @@ def load_gpx(gpx_file):
             track_arrays.append(seg_points)
 
     # Stack all the tracks together
-    tracks = np.stack(track_arrays)
+    tracks = track_arrays
+    combined = np.concatenate(track_arrays)
 
     # Get the extreme values for the extents
     extents = {
-        "south": tracks[..., 1].min(),
-        "north": tracks[..., 1].max(),
-        "west": tracks[..., 0].min(),
-        "east": tracks[..., 0].max(),
+        "south": combined[..., 1].min(),
+        "north": combined[..., 1].max(),
+        "west": combined[..., 0].min(),
+        "east": combined[..., 0].max(),
     }
 
     return gpx, tracks, extents
@@ -301,39 +323,45 @@ def osm_locations(extents):
     tags = {"natural": "peak"}
 
     # Retrieve POIs using the bounding box
-    peaks = ox.features.features_from_bbox(
-        (extents["west"], extents["south"], extents["east"], extents["north"]), tags
-    )
-    peaks = peaks.reset_index().dropna(subset="name").reset_index()
-    peaks["lon"] = [geom.x for geom in peaks["geometry"].tolist()]
-    peaks["lat"] = [geom.y for geom in peaks["geometry"].tolist()]
-    peaks["marker"] = "^"
-    peaks["label"] = "peak"
-    peaks["color"] = "C2"
-    peaks["markersize"] = 10
-    peaks["markeredgecolor"] = "white"
+    try:
+        peaks = ox.features.features_from_bbox(
+            (extents["west"], extents["south"], extents["east"], extents["north"]), tags
+        )
+        peaks = peaks.reset_index().dropna(subset="name").reset_index()
+        peaks["lon"] = [geom.x for geom in peaks["geometry"].tolist()]
+        peaks["lat"] = [geom.y for geom in peaks["geometry"].tolist()]
+        peaks["marker"] = "^"
+        peaks["label"] = "peak"
+        peaks["color"] = "C2"
+        peaks["markersize"] = 10
+        peaks["markeredgecolor"] = "white"
+    except ox._errors.InsufficientResponseError:
+        peaks = pd.DataFrame()
 
     # Define the tags for peaks
     tags = {"natural": "water"}
 
     # Retrieve POIs using the bounding box
-    water = ox.features.features_from_bbox(
-        (extents["west"], extents["south"], extents["east"], extents["north"]), tags
-    )
-    if "name" not in water.columns:
-        water["name"] = None
-    water = water.reset_index().dropna(subset="name").reset_index()
-    # water["centroid"] = water.geometry.centroid
-    water["lon"] = [geom.x for geom in water.geometry.centroid]
-    water["lat"] = [geom.y for geom in water.geometry.centroid]
-    water["marker"] = "o"
-    water["label"] = "water"
-    water["color"] = "C0"
+    try:
+        water = ox.features.features_from_bbox(
+            (extents["west"], extents["south"], extents["east"], extents["north"]), tags
+        )
+        if "name" not in water.columns:
+            water["name"] = None
+        water = water.reset_index().dropna(subset="name").reset_index()
+        # water["centroid"] = water.geometry.centroid
+        # water["lon"] = [geom.x for geom in water.geometry.centroid]
+        # water["lat"] = [geom.y for geom in water.geometry.centroid]
+        water["marker"] = "o"
+        water["label"] = "water"
+        water["color"] = "C0"
+    except ox._errors.InsufficientResponseError:
+        peaks = pd.DataFrame()
 
     return peaks, water
 
 
-def main(gpx_file, trail_scale_fraction, dem_type):
+def main(gpx_file, trail_scale_fraction, dem_type, show_peaks=True, show_water=True):
     """
     Create visualization of Trail
 
@@ -345,6 +373,10 @@ def main(gpx_file, trail_scale_fraction, dem_type):
         Fraction of length of graphic that trail occupies
     dem_type : str
         DEM source.
+    show_peaks : bool, optional
+        Flag to show peaks on map. Defaults to True
+    show_water : bool, optional
+        Flag to show water on map. Defaults to True
     """
 
     # Load GPX data
@@ -375,52 +407,49 @@ def main(gpx_file, trail_scale_fraction, dem_type):
     dx = (x[1] - x[0]) / 2.0
     dy = (y[1] - y[0]) / 2.0
     imshow_extent = [x[0] - dx, x[-1] + dx, y[0] - dy, y[-1] + dy]
-    ax.imshow(
-        slope,
-        extent=imshow_extent,
-        cmap="Greys",
-    )
+    ax.imshow(slope, extent=imshow_extent, cmap="Greys", origin="lower")
 
-    interpolator = RegularGridInterpolator(
-        (topo_data.x.values, topo_data.y.values), topo_data.values.squeeze()
-    )
+    # interpolator = RegularGridInterpolator(
+    #     (topo_data.x.values, topo_data.y.values), topo_data.values.squeeze()
+    # )
     for track in tracks:
         x = track[:, 0]
         y = track[:, 1]
-        track_alt = interpolator(np.stack([x, y]).T)
-        # line = colored_line_plot(
-        #     ax, x, y, track_alt, cmap="plasma", norm=None, linewidth=4
-        # )
-        scatter = ax.scatter(x, y, c=track_alt, cmap="plasma")
+        z = track[:, 2]
+        # track_alt = interpolator(np.stack([x, y]).T)
+        # line = colored_line_plot(ax, x, y, z, cmap="plasma", norm=None, linewidth=6)
+        scatter = ax.scatter(x, y, c=z, cmap="plasma")
     ax.set_aspect("equal")
     ax.set_title(os.path.basename(gpx_file))
     cbar = fig.colorbar(scatter)
     cbar.set_label("Altitude [m]")
 
     # Plot points of interest
-    for _, water in water_df.iterrows():
-        x, y = water["geometry"].exterior.xy
-        xc = water["geometry"].centroid.x
-        yc = water["geometry"].centroid.y
-        ax.fill(x, y, color=water["color"], alpha=0.5)
-        # ax.text(xc, yc, water["name"], color="white", va="center", ha="center")
-    for _, peak in peak_df.iterrows():
-        ax.plot(
-            peak["lon"],
-            peak["lat"],
-            marker=peak["marker"],
-            color=peak["color"],
-            markersize=peak["markersize"],
-            markeredgecolor=peak["markeredgecolor"],
-        )
-        ax.text(
-            peak["lon"],
-            peak["lat"],
-            peak["name"],
-            color=peak["color"],
-            va="top",
-            ha="center",
-        )
+    if show_water:
+        for _, water in water_df.iterrows():
+            x, y = water["geometry"].exterior.xy
+            xc = water["geometry"].centroid.x
+            yc = water["geometry"].centroid.y
+            ax.fill(x, y, color=water["color"], alpha=0.5)
+            # ax.text(xc, yc, water["name"], color="white", va="center", ha="center")
+    if show_peaks:
+        for _, peak in peak_df.iterrows():
+            ax.plot(
+                peak["lon"],
+                peak["lat"],
+                marker=peak["marker"],
+                color=peak["color"],
+                markersize=peak["markersize"],
+                markeredgecolor=peak["markeredgecolor"],
+            )
+            ax.text(
+                peak["lon"],
+                peak["lat"],
+                peak["name"],
+                color=peak["color"],
+                va="top",
+                ha="center",
+            )
     ax.set_xlim([extents["west"], extents["east"]])
     ax.set_ylim([extents["south"], extents["north"]])
     fig.tight_layout()
@@ -431,5 +460,12 @@ def main(gpx_file, trail_scale_fraction, dem_type):
 
 if __name__ == "__main__":
     ARGS = ARG_PARSER.parse_args()
-    main(ARGS.gpx_file, ARGS.trail_scale_fraction, ARGS.dem_type)
-    plt.show()
+    main(
+        ARGS.gpx_file,
+        ARGS.trail_scale_fraction,
+        ARGS.dem_type,
+        show_peaks=ARGS.show_peaks,
+        show_water=ARGS.show_water,
+    )
+    if not ARGS.skip_plot:
+        plt.show()
