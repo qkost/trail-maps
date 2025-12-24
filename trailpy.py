@@ -25,6 +25,8 @@ from scipy.interpolate import RegularGridInterpolator
 import osmnx as ox
 from rasterio.errors import RasterioIOError
 
+gdal.UseExceptions()
+
 ARG_PARSER = argparse.ArgumentParser(description="Visualize trail GPX data")
 
 ARG_PARSER.add_argument("gpx_files", type=str, help="File path to GPX file")
@@ -411,7 +413,13 @@ def osm_locations(extents):
     return peaks, water
 
 
-def main(gpx_files, trail_scale_fraction, dem_type, show_peaks=True, show_water=True):
+def main(
+    gpx_files,
+    trail_scale_fraction=1,
+    dem_type=None,
+    show_peaks=True,
+    show_water=True,
+):
     """
     Create visualization of Trail
 
@@ -511,8 +519,10 @@ def main(gpx_files, trail_scale_fraction, dem_type, show_peaks=True, show_water=
     ax.set_ylim([extents["south"], extents["north"]])
     fig.tight_layout()
 
-    output_filename = f"{name}.png"
+    output_filename = os.path.join(os.path.dirname(gpx_files[0]), f"{name}.png")
     fig.savefig(output_filename)
+
+    return fig
 
 
 if __name__ == "__main__":
