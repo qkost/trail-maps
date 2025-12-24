@@ -396,6 +396,8 @@ def osm_locations(extents):
         peaks = ox.features.features_from_bbox(
             (extents["west"], extents["south"], extents["east"], extents["north"]), tags
         )
+        if "name" not in peaks.columns:
+            peaks["name"] = None
         peaks = peaks.reset_index().dropna(subset="name").reset_index()
         peaks["lon"] = [geom.x for geom in peaks["geometry"].tolist()]
         peaks["lat"] = [geom.y for geom in peaks["geometry"].tolist()]
