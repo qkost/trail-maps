@@ -156,7 +156,8 @@ def load_gpx(gpx_file):
                     for point in segment.points
                 ]
             )
-            track_arrays.append(seg_points)
+            if len(seg_points) > 0:
+                track_arrays.append(seg_points)
 
     # Stack all the tracks together
     tracks = track_arrays
