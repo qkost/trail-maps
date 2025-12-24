@@ -9,6 +9,8 @@ Create visualizations of all GPX files.
 """
 
 import os
+import matplotlib.pyplot as plt
+
 from trailpy import ARG_PARSER, main
 
 ROOT_DIR = "data"
@@ -25,9 +27,13 @@ def run_all(**kwargs):
 
         if any(gpx_files):
             filename = os.path.join(ROOT_DIR, path[-1] + ".png")
-            print(f"{root} --> {filename}")
-            fig = main(gpx_files, **kwargs)
-            fig.savefig(filename)
+            if not os.path.isfile(filename):
+                print(f"{root} --> {filename}")
+                fig = main(gpx_files, **kwargs)
+                fig.savefig(filename)
+                plt.close(fig)
+            else:
+                print(f"Skipping '{filename}'")
 
 
 if __name__ == "__main__":
