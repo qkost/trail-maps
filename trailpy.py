@@ -25,6 +25,8 @@ from scipy.interpolate import RegularGridInterpolator
 import osmnx as ox
 from rasterio.errors import RasterioIOError
 
+import subprocess
+
 gdal.UseExceptions()
 
 ARG_PARSER = argparse.ArgumentParser(description="Visualize trail GPX data")
@@ -306,7 +308,18 @@ def hillshade(in_file, out_file):
 
     in_data = gdal.Open(in_file)
     options = ["-combined"]
-    gdal.DEMProcessing(out_file, in_data, "hillshade", options=options)
+    hill_file = out_file.replace(".tif", "_itermediate.tif")
+    gdal.DEMProcessing(hill_file, in_data, "hillshade", options=options)
+
+    command = [
+        "gdal_calc",
+        "-A",
+        hill_file,
+        f"--outfile={out_file}",
+        '--calc="uint8(((A / 255.)**(1/0.5)) * 255)"',
+    ]
+
+    subprocess.run(command, check=True)
 
     # Load back data
     raster_data = rxr.open_rasterio(out_file, masked=False)
