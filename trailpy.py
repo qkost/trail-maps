@@ -307,10 +307,13 @@ def hillshade(in_file, out_file):
     """
 
     in_data = gdal.Open(in_file)
+
+    # Create hillshade
     options = ["-combined"]
     hill_file = out_file.replace(".tif", "_itermediate.tif")
     gdal.DEMProcessing(hill_file, in_data, "hillshade", options=options)
 
+    # Correct for gamma
     command = [
         "gdal_calc",
         "-A",
