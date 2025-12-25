@@ -604,7 +604,7 @@ def main(
     # Crop image
     center_x = np.mean(imshow_extent[0:2])
     center_y = np.mean(imshow_extent[2:])
-    radius = (imshow_extent[1] - imshow_extent[0]) / 2
+    radius = 0.95 * (imshow_extent[1] - imshow_extent[0]) / 2
     patch = patches.Circle(
         (center_x, center_y),
         radius=radius,
