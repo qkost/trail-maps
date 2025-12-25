@@ -101,6 +101,17 @@ ARG_PARSER.add_argument(
         "Colormap for elevation channel. "
         "See: https://matplotlib.org/stable/users/explain/colors/colormaps.html"
     ),
+    default="cividis",
+)
+
+ARG_PARSER.add_argument(
+    "--cmap_line",
+    "-l",
+    type=str,
+    help=(
+        "Colormap for trail lines. "
+        "See: https://matplotlib.org/stable/users/explain/colors/colormaps.html"
+    ),
     default="gray",
 )
 
@@ -603,6 +614,7 @@ def main(
     show_peaks=True,
     show_water=True,
     cmap="gray",
+    cmap_line="plasma",
     color_sf=1.0,
     alpha_sf=1.0,
     alpha_min=0.0,
@@ -629,6 +641,8 @@ def main(
         Flag to show water on map. Defaults to True
     cmap : str, optional
         The colormap to use. Defaults to 'gray'
+    cmap_line : str, optional
+        The colormap to use for the trail line. Defaults to 'gray'
     color_sf : float, optional
         Scale factor for color. The maximum color value is
         color_sf * (color_data.max() - color_data.min()) + color_data.min()
@@ -734,20 +748,33 @@ def main(
     alt_min = tracks_combined[:, 2].min()
     alt_max = tracks_combined[:, 2].max()
     # norm_size = mpl.colors.Normalize(vmin=alt_min, vmax=alt_max)
+    color_line_fun = cmap_line
+    if cmap_line in mpl.colormaps:
+        # cmap_color(norm_color(color_data) * color_max)
+
+        cmap_line_fun = plt.get_cmap(cmap_line)
+        color_line_norm = mpl.colors.Normalize(vmin=alt_min, vmax=alt_max)
+        color_line_fun = lambda x: cmap_line_fun(color_line_norm(x))
+
+    else:
+        rgba_line = mpl.colors.to_rgba(cmap_line)
+        color_line_fun = lambda x: rgba_line
+
     for track in tracks:
         x = track[:, 0]
         y = track[:, 1]
         z = track[:, 2]
         # track_alt = interpolator(np.stack([x, y]).T)
         # line = colored_line_plot(ax, x, y, z, cmap="plasma", norm=None, linewidth=6)
+
         scatter = ax.scatter(
             x,
             y,
-            c=z,
+            c=color_line_fun(z),
             marker="o",
-            cmap="plasma",
-            vmin=alt_min,
-            vmax=alt_max,
+            # cmap=color_line,
+            # vmin=alt_min,
+            # vmax=alt_max,
             s=10,
             # edgecolors="black",
             # linewidth=0.1,
@@ -805,6 +832,7 @@ if __name__ == "__main__":
         show_peaks=ARGS.show_peaks,
         show_water=ARGS.show_water,
         cmap=ARGS.cmap,
+        cmap_line=ARGS.cmap_line,
         color_sf=ARGS.color_sf,
         alpha_sf=ARGS.alpha_sf,
         alpha_min=ARGS.alpha_min,
