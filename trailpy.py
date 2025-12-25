@@ -346,15 +346,16 @@ def hillshade(in_file, out_file):
     gdal.DEMProcessing(hill_file, in_data, "hillshade", options=options)
 
     # Correct for gamma
-    command = [
-        "gdal_calc",
-        "-A",
-        hill_file,
-        f"--outfile={out_file}",
-        '--calc="uint8(((A / 255.)**(1/0.5)) * 255)"',
-    ]
+    if not os.path.exists(out_file):
+        command = [
+            "gdal_calc",
+            "-A",
+            hill_file,
+            f"--outfile={out_file}",
+            '--calc="uint8(((A / 255.)**(1/0.5)) * 255)"',
+        ]
 
-    subprocess.run(command, check=True)
+        subprocess.run(command, check=True)
 
     # Load back data
     raster_data = rxr.open_rasterio(out_file, masked=False)
