@@ -12,7 +12,7 @@ import argparse
 import gpxpy
 import matplotlib as mpl
 import matplotlib.pyplot as plt
-import matplotlib.cm as cm
+import matplotlib.patches as patches
 import numpy as np
 import pandas as pd
 
@@ -90,6 +90,33 @@ ARG_PARSER.add_argument(
     "--skip_plot",
     help="Ship showing plot",
     action="store_true",
+)
+
+ARG_PARSER.add_argument(
+    "--cmap",
+    "-c",
+    type=str,
+    help=(
+        "Colormap for elevation channel. "
+        "See: https://matplotlib.org/stable/users/explain/colors/colormaps.html"
+    ),
+    default="gray",
+)
+
+ARG_PARSER.add_argument(
+    "--alpha_sf",
+    "-A",
+    type=float,
+    help="Scale factor for alpha channel.",
+    default=1,
+)
+
+ARG_PARSER.add_argument(
+    "--color_sf",
+    "-C",
+    type=float,
+    help="Scale factor for color channel.",
+    default=1,
 )
 
 
@@ -436,7 +463,7 @@ def osm_locations(extents):
 
 
 def combine_data_arrays_to_rgba(
-    color_data, alpha_data, color_sf=1, alpha_sf=1, cmap="gray"
+    color_data, alpha_data, color_sf=1.0, alpha_sf=1.0, cmap="gray"
 ):
     """
     Combine two arrays to determine the color based on one array and the alpha based
@@ -451,13 +478,13 @@ def combine_data_arrays_to_rgba(
     color_sf : float, optional
         Scale factor for color. The maximum color value is
         color_sf * (color_data.max() - color_data.min()) + color_data.min()
-        Defaults to 1.5
+        Defaults to 1.0
     alpha_sf : float, optional
         Scale factor for alpha. The maximum alpha value is
         alpha_sf * (alpha_data.max() - alpha_data.min()) + alpha_data.min()
-        Defaults to 1.1
+        Defaults to 1.0
     cmap : str, optional
-        The colormap to use. Defaults to 'Blues_r'
+        The colormap to use. Defaults to 'gray'
     """
 
     # Define the norm for color
@@ -487,7 +514,8 @@ def combine_data_arrays_to_rgba(
 
     # Keep the color from the color array and the alpha from the alpha array
     image_array = copy.copy(color_array)
-    image_array[..., -1] = 1 - alpha_array
+    image_array *= np.repeat(alpha_array[..., np.newaxis], 4, axis=-1)
+    image_array[..., -1] = 1
 
     return image_array
 
@@ -498,6 +526,9 @@ def main(
     dem_type=None,
     show_peaks=True,
     show_water=True,
+    cmap="gray",
+    color_sf=1.0,
+    alpha_sf=1.0,
 ):
     """
     Create visualization of Trail
@@ -514,6 +545,16 @@ def main(
         Flag to show peaks on map. Defaults to True
     show_water : bool, optional
         Flag to show water on map. Defaults to True
+    cmap : str, optional
+        The colormap to use. Defaults to 'gray'
+    color_sf : float, optional
+        Scale factor for color. The maximum color value is
+        color_sf * (color_data.max() - color_data.min()) + color_data.min()
+        Defaults to 1.0
+    alpha_sf : float, optional
+        Scale factor for alpha. The maximum alpha value is
+        alpha_sf * (alpha_data.max() - alpha_data.min()) + alpha_data.min()
+        Defaults to 1.0
     """
     if len(gpx_files) == 1:
         name = os.path.basename(gpx_files[0]).replace(".gpx", "")
@@ -542,7 +583,9 @@ def main(
     # Combine the slope for tha alpha channel and the color for the elevation
     slope = hill_data.values.squeeze().astype(np.float64)
     elev = topo_data.values.squeeze().astype(np.float64)
-    image_array = combine_data_arrays_to_rgba(elev, slope)
+    image_array = combine_data_arrays_to_rgba(
+        elev, slope, cmap=cmap, color_sf=color_sf, alpha_sf=alpha_sf
+    )
 
     # Plot
     x = hill_data.x.values
@@ -551,15 +594,23 @@ def main(
     dx = (x[1] - x[0]) / 2.0
     dy = (y[1] - y[0]) / 2.0
     imshow_extent = [x[0] - dx, x[-1] + dx, y[0] - dy, y[-1] + dy]
-    ax.imshow(image_array, extent=imshow_extent, origin="lower")
+    img = ax.imshow(image_array, extent=imshow_extent, origin="lower")
 
-    # interpolator = RegularGridInterpolator(
-    #     (topo_data.x.values, topo_data.y.values), topo_data.values.squeeze()
-    # )
+    # Crop image
+    center_x = np.mean(imshow_extent[0:2])
+    center_y = np.mean(imshow_extent[2:])
+    radius = (imshow_extent[1] - imshow_extent[0]) / 2
+    patch = patches.Circle(
+        (center_x, center_y),
+        radius=radius,
+        transform=ax.transData,
+    )
+    img.set_clip_path(patch)
+
     tracks_combined = np.concatenate(tracks)
     alt_min = tracks_combined[:, 2].min()
     alt_max = tracks_combined[:, 2].max()
-    norm_size = mpl.colors.Normalize(vmin=alt_min, vmax=alt_max)
+    # norm_size = mpl.colors.Normalize(vmin=alt_min, vmax=alt_max)
     for track in tracks:
         x = track[:, 0]
         y = track[:, 1]
@@ -570,10 +621,13 @@ def main(
             x,
             y,
             c=z,
+            marker="o",
             cmap="plasma",
             vmin=alt_min,
             vmax=alt_max,
-            s=3 * (-1 * norm_size(z) + norm_size(alt_max)),
+            s=10,
+            # edgecolors="black",
+            # linewidth=0.1,
         )
     ax.set_aspect("equal")
     # ax.set_title(name)
@@ -609,8 +663,8 @@ def main(
     ax.set_xlim([extents["west"], extents["east"]])
     ax.set_ylim([extents["south"], extents["north"]])
     ax.set_axis_off()
-    ax.set_facecolor("None")
-    fig.set_facecolor("None")
+    ax.set_facecolor("black")
+    fig.set_facecolor("none")
     fig.tight_layout()
 
     output_filename = os.path.join(os.path.dirname(gpx_files[0]), f"{name}.png")
@@ -627,6 +681,9 @@ if __name__ == "__main__":
         ARGS.dem_type,
         show_peaks=ARGS.show_peaks,
         show_water=ARGS.show_water,
+        cmap=ARGS.cmap,
+        color_sf=ARGS.color_sf,
+        alpha_sf=ARGS.alpha_sf,
     )
     if not ARGS.skip_plot:
         plt.show()
