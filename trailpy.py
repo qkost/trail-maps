@@ -13,6 +13,7 @@ import gpxpy
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
+import numpy.ma as ma
 import numpy as np
 import pandas as pd
 
@@ -502,10 +503,6 @@ def combine_data_arrays_to_rgba(
     color_array = cmap_color(norm_color(color_data))
 
     # # Compute alpha for each pixel
-    # cmap_alpha = plt.get_cmap("Greys_r")
-    # alpha_colors = cmap_alpha(norm_alpha(alpha_data))
-    # alpha_array = np.linalg.norm(alpha_colors[..., :3], axis=-1)
-    # alpha_array /= alpha_array.max()
     dynamic_range = vmax_alpha - vmin_alpha
     if dynamic_range == 0:
         alpha_array = np.ones(alpha_data.shape)
@@ -583,9 +580,15 @@ def main(
     # Combine the slope for tha alpha channel and the color for the elevation
     slope = hill_data.values.squeeze().astype(np.float64)
     elev = topo_data.values.squeeze().astype(np.float64)
+    no_data = elev == -999999
+    elev[no_data] = elev[~no_data].min()
     image_array = combine_data_arrays_to_rgba(
         elev, slope, cmap=cmap, color_sf=color_sf, alpha_sf=alpha_sf
     )
+
+    # # Mask over invalid elevation data
+    # if elev.min() == -999999:
+    #     image_array[elev <= 0, -1] = 0
 
     # Plot
     x = hill_data.x.values
@@ -663,7 +666,7 @@ def main(
     ax.set_xlim([extents["west"], extents["east"]])
     ax.set_ylim([extents["south"], extents["north"]])
     ax.set_axis_off()
-    ax.set_facecolor("black")
+    ax.set_facecolor("none")
     fig.set_facecolor("none")
     fig.tight_layout()
 
