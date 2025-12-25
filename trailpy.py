@@ -709,7 +709,10 @@ def main(
     # Crop image
     center_x = np.mean(imshow_extent[0:2])
     center_y = np.mean(imshow_extent[2:])
-    radius = 0.95 * (imshow_extent[1] - imshow_extent[0]) / 2
+    min_diameter = min(
+        [imshow_extent[1] - imshow_extent[0], imshow_extent[3] - imshow_extent[2]]
+    )
+    radius = 0.95 * (min_diameter) / 2
 
     if crop_sides == 0:
         patch = patches.Circle(
