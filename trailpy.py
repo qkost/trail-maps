@@ -343,7 +343,8 @@ def hillshade(in_file, out_file):
     # Create hillshade
     options = ["-combined"]
     hill_file = out_file.replace(".tif", "_itermediate.tif")
-    gdal.DEMProcessing(hill_file, in_data, "hillshade", options=options)
+    if not os.path.exists(hill_file):
+        gdal.DEMProcessing(hill_file, in_data, "hillshade", options=options)
 
     # Correct for gamma
     if not os.path.exists(out_file):
