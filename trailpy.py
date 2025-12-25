@@ -113,11 +113,41 @@ ARG_PARSER.add_argument(
 )
 
 ARG_PARSER.add_argument(
+    "--alpha_min",
+    "-amin",
+    type=float,
+    help="Minimum alpha value.",
+    default=1,
+)
+
+ARG_PARSER.add_argument(
     "--alpha_max",
-    "-M",
+    "-amax",
     type=float,
     help="Maximum alpha value.",
     default=1,
+)
+
+ARG_PARSER.add_argument(
+    "--color_min",
+    "-cmin",
+    type=float,
+    help=(
+        "Minimum fraction of the colorbar on the dark side. Set to 0 for deep blacks "
+        "and increase to remove the dark part of the spectrum"
+    ),
+    default=0.0,
+)
+
+ARG_PARSER.add_argument(
+    "--color_max",
+    "-cmax",
+    type=float,
+    help=(
+        "Minimum fraction of the colorbar on the light side. Set to 1.0 for bright whites "
+        "and increase to remove the dark part of the spectrum"
+    ),
+    default=1.0,
 )
 
 ARG_PARSER.add_argument(
@@ -490,7 +520,15 @@ def osm_locations(extents):
 
 
 def combine_data_arrays_to_rgba(
-    color_data, alpha_data, color_sf=1.0, alpha_sf=1.0, cmap="gray", alpha_max=1
+    color_data,
+    alpha_data,
+    color_sf=1.0,
+    alpha_sf=1.0,
+    cmap="gray",
+    alpha_min=0.0,
+    alpha_max=1.0,
+    color_min=0.0,
+    color_max=1.0,
 ):
     """
     Combine two arrays to determine the color based on one array and the alpha based
@@ -512,19 +550,27 @@ def combine_data_arrays_to_rgba(
         Defaults to 1.0
     cmap : str, optional
         The colormap to use. Defaults to 'gray'
+    alpha_min : float, optional
+        Minimum alpha for image. Defaults to 1.0
     alpha_max : float, optional
         Maximum alpha for image. Defaults to 1.0
+    color_min : float, optional
+        Minimum fraction of the cmap on the dark side. Must be between 0 and 1. Defaults
+        to 0.0
+    color_max : float, optional
+        Maximum fraction of the cmap on the light side. Must be between 0 and 1.
+        Defaults to 1.0
     """
 
     # Define the norm for color
     color_data_min = color_data[color_data != -999999].min()
-    vmin_color = 0 * (color_data.max() - color_data_min) + color_data_min
+    vmin_color = -1 * color_min * (color_data.max() - color_data_min) + color_data_min
     vmax_color = color_sf * (color_data.max() - color_data_min) + color_data_min
     norm_color = mpl.colors.Normalize(vmin=vmin_color, vmax=vmax_color)
 
     # Define the norm for alpha
     alpha_data_min = alpha_data[alpha_data != -999999].min()
-    vmin_alpha = 0 * (alpha_data.max() - alpha_data_min) + alpha_data_min
+    vmin_alpha = -1 * alpha_min * (alpha_data.max() - alpha_data_min) + alpha_data_min
     vmax_alpha = alpha_sf * (alpha_data.max() - alpha_data_min) + alpha_data_min
     # norm_alpha = mpl.colors.Normalize(vmin=vmin_alpha, vmax=vmax_alpha)
 
@@ -532,7 +578,7 @@ def combine_data_arrays_to_rgba(
     cmap_color = plt.get_cmap(cmap)
     # cmap_color.set_under("C1")
     # cmap_color.set_over("C2")
-    color_array = cmap_color(norm_color(color_data))
+    color_array = cmap_color(norm_color(color_data) * color_max)
 
     # # Compute alpha for each pixel
     dynamic_range = vmax_alpha - vmin_alpha
@@ -541,10 +587,10 @@ def combine_data_arrays_to_rgba(
     else:
         alpha_array = np.clip((alpha_data - vmin_alpha) / dynamic_range, 0, 1)
     alpha_array *= alpha_max
+    alpha_array = np.repeat(alpha_array[..., np.newaxis], 4, axis=-1)
 
     # Keep the color from the color array and the alpha from the alpha array
-    image_array = copy.copy(color_array)
-    image_array *= np.repeat(alpha_array[..., np.newaxis], 4, axis=-1)
+    image_array = color_array * alpha_array
     image_array[..., -1] = 1
 
     return image_array
@@ -559,7 +605,10 @@ def main(
     cmap="gray",
     color_sf=1.0,
     alpha_sf=1.0,
+    alpha_min=0.0,
     alpha_max=1.0,
+    color_min=0.0,
+    color_max=1.0,
     crop_sides=0,
     crop_rotation=90,
 ):
@@ -588,8 +637,16 @@ def main(
         Scale factor for alpha. The maximum alpha value is
         alpha_sf * (alpha_data.max() - alpha_data.min()) + alpha_data.min()
         Defaults to 1.0
+    alpha_min : float, optional
+        Minimum alpha for image. Defaults to 1.0
     alpha_max : float, optional
         Maximum alpha for terrain. Defaults to 1.0
+    color_min : float, optional
+        Minimum fraction of the cmap on the dark side. Must be between 0 and 1. Defaults
+        to 0.0
+    color_max : float, optional
+        Maximum fraction of the cmap on the light side. Must be between 0 and 1.
+        Defaults to 1.0
     crop_sides : int, optional
         Number of sides of regular polygon to crop to. If 0 sides, it is a circle.
         Defaults to 0
@@ -634,7 +691,10 @@ def main(
         cmap=cmap,
         color_sf=color_sf,
         alpha_sf=alpha_sf,
+        alpha_min=alpha_min,
         alpha_max=alpha_max,
+        color_min=color_min,
+        color_max=color_max,
     )
 
     # Plot
@@ -744,7 +804,10 @@ if __name__ == "__main__":
         cmap=ARGS.cmap,
         color_sf=ARGS.color_sf,
         alpha_sf=ARGS.alpha_sf,
+        alpha_min=ARGS.alpha_min,
         alpha_max=ARGS.alpha_max,
+        color_min=ARGS.color_min,
+        color_max=ARGS.color_max,
         crop_sides=ARGS.crop_sides,
         crop_rotation=ARGS.crop_rotation,
     )
