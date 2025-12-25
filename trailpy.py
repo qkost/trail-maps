@@ -120,6 +120,22 @@ ARG_PARSER.add_argument(
     default=1,
 )
 
+ARG_PARSER.add_argument(
+    "--crop_sides",
+    "-S",
+    type=int,
+    help="Number of sides of a regular polygon to crop to. Defaults to 0 (circle)",
+    default=0,
+)
+
+ARG_PARSER.add_argument(
+    "--crop_rotation",
+    "-R",
+    type=float,
+    help="Rotation of crop polygon in degrees.",
+    default=90,
+)
+
 
 def load_gpxs(gpx_files):
     """
@@ -528,6 +544,8 @@ def main(
     cmap="gray",
     color_sf=1.0,
     alpha_sf=1.0,
+    crop_sides=0,
+    crop_rotation=90,
 ):
     """
     Create visualization of Trail
@@ -554,6 +572,11 @@ def main(
         Scale factor for alpha. The maximum alpha value is
         alpha_sf * (alpha_data.max() - alpha_data.min()) + alpha_data.min()
         Defaults to 1.0
+    crop_sides : int, optional
+        Number of sides of regular polygon to crop to. If 0 sides, it is a circle.
+        Defaults to 0
+    crop_rotation : float, optional
+        Rotation of crop shape in degrees. Defaults to 90
     """
     if len(gpx_files) == 1:
         name = os.path.basename(gpx_files[0]).replace(".gpx", "")
@@ -588,10 +611,6 @@ def main(
         elev, slope, cmap=cmap, color_sf=color_sf, alpha_sf=alpha_sf
     )
 
-    # # Mask over invalid elevation data
-    # if elev.min() == -999999:
-    #     image_array[elev <= 0, -1] = 0
-
     # Plot
     x = hill_data.x.values
     y = hill_data.y.values
@@ -605,11 +624,21 @@ def main(
     center_x = np.mean(imshow_extent[0:2])
     center_y = np.mean(imshow_extent[2:])
     radius = 0.95 * (imshow_extent[1] - imshow_extent[0]) / 2
-    patch = patches.Circle(
-        (center_x, center_y),
-        radius=radius,
-        transform=ax.transData,
-    )
+
+    if crop_sides == 0:
+        patch = patches.Circle(
+            (center_x, center_y),
+            radius=radius,
+            transform=ax.transData,
+        )
+    else:
+        patch = patches.RegularPolygon(
+            (center_x, center_y),
+            crop_sides,
+            orientation=np.radians(crop_rotation),
+            radius=radius,
+            transform=ax.transData,
+        )
     img.set_clip_path(patch)
 
     tracks_combined = np.concatenate(tracks)
@@ -689,6 +718,8 @@ if __name__ == "__main__":
         cmap=ARGS.cmap,
         color_sf=ARGS.color_sf,
         alpha_sf=ARGS.alpha_sf,
+        crop_sides=ARGS.crop_sides,
+        crop_rotation=ARGS.crop_rotation,
     )
     if not ARGS.skip_plot:
         plt.show()
