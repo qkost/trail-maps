@@ -10,12 +10,15 @@ Visualize trail GPX data
 
 import argparse
 import gpxpy
+import matplotlib as mpl
 import matplotlib.pyplot as plt
+import matplotlib.cm as cm
 import numpy as np
 import pandas as pd
 
 import os
 import glob
+import copy
 
 from bmi_topography import Topography
 import rioxarray as rxr
@@ -432,6 +435,63 @@ def osm_locations(extents):
     return peaks, water
 
 
+def combine_data_arrays_to_rgba(
+    color_data, alpha_data, color_sf=1, alpha_sf=1, cmap="gray"
+):
+    """
+    Combine two arrays to determine the color based on one array and the alpha based
+    on the othere
+
+    Parameters
+    ----------
+    color_data : np.array
+        Array of values to determine the color of the image
+    alpha_data : np.array
+        Array of values to determine the color of the image
+    color_sf : float, optional
+        Scale factor for color. The maximum color value is
+        color_sf * (color_data.max() - color_data.min()) + color_data.min()
+        Defaults to 1.5
+    alpha_sf : float, optional
+        Scale factor for alpha. The maximum alpha value is
+        alpha_sf * (alpha_data.max() - alpha_data.min()) + alpha_data.min()
+        Defaults to 1.1
+    cmap : str, optional
+        The colormap to use. Defaults to 'Blues_r'
+    """
+
+    # Define the norm for color
+    vmin_color = 0 * (color_data.max() - color_data.min()) + color_data.min()
+    vmax_color = color_sf * (color_data.max() - color_data.min()) + color_data.min()
+    norm_color = mpl.colors.Normalize(vmin=vmin_color, vmax=vmax_color)
+
+    # Define the norm for alpha
+    vmin_alpha = 0 * (alpha_data.max() - alpha_data.min()) + alpha_data.min()
+    vmax_alpha = alpha_sf * (alpha_data.max() - alpha_data.min()) + alpha_data.min()
+    # norm_alpha = mpl.colors.Normalize(vmin=vmin_alpha, vmax=vmax_alpha)
+
+    # Compute color for each pixel based on elevation
+    cmap_color = plt.get_cmap(cmap)
+    color_array = cmap_color(norm_color(color_data))
+
+    # # Compute alpha for each pixel
+    # cmap_alpha = plt.get_cmap("Greys_r")
+    # alpha_colors = cmap_alpha(norm_alpha(alpha_data))
+    # alpha_array = np.linalg.norm(alpha_colors[..., :3], axis=-1)
+    # alpha_array /= alpha_array.max()
+    dynamic_range = vmax_alpha - vmin_alpha
+    if dynamic_range == 0:
+        alpha_array = np.ones(alpha_data.shape)
+    else:
+        alpha_array = np.clip((alpha_data - vmin_alpha) / dynamic_range, 0, 1)
+
+    # Keep the color from the color array and the alpha from the alpha array
+    image_array = copy.copy(color_array)
+    image_array[..., -1] = 1 - alpha_array
+
+    return image_array
+
+
 def main(
     gpx_files,
     trail_scale_fraction=1,
@@ -474,21 +534,24 @@ def main(
     filename_shaded = filename_topo.replace(".tif", "_hillshade.tif")
     hill_data = hillshade(filename_topo, filename_shaded)
 
-    # Set maximum slope to nan
-    slope = hill_data.values.squeeze().astype(np.float64)
-
     # Find interesing markers
     peak_df, water_df = osm_locations(extents)
 
     fig, ax = plt.subplots(figsize=(12, 12))
 
+    # Combine the slope for tha alpha channel and the color for the elevation
+    slope = hill_data.values.squeeze().astype(np.float64)
+    elev = topo_data.values.squeeze().astype(np.float64)
+    image_array = combine_data_arrays_to_rgba(elev, slope)
+
+    # Plot
     x = hill_data.x.values
     y = hill_data.y.values
 
     dx = (x[1] - x[0]) / 2.0
     dy = (y[1] - y[0]) / 2.0
     imshow_extent = [x[0] - dx, x[-1] + dx, y[0] - dy, y[-1] + dy]
-    ax.imshow(slope, extent=imshow_extent, cmap="Greys", origin="lower")
+    ax.imshow(image_array, extent=imshow_extent, origin="lower")
 
     # interpolator = RegularGridInterpolator(
     #     (topo_data.x.values, topo_data.y.values), topo_data.values.squeeze()
@@ -496,17 +559,26 @@ def main(
     tracks_combined = np.concatenate(tracks)
     alt_min = tracks_combined[:, 2].min()
     alt_max = tracks_combined[:, 2].max()
+    norm_size = mpl.colors.Normalize(vmin=alt_min, vmax=alt_max)
     for track in tracks:
         x = track[:, 0]
         y = track[:, 1]
         z = track[:, 2]
         # track_alt = interpolator(np.stack([x, y]).T)
         # line = colored_line_plot(ax, x, y, z, cmap="plasma", norm=None, linewidth=6)
-        scatter = ax.scatter(x, y, c=z, cmap="plasma", vmin=alt_min, vmax=alt_max)
+        scatter = ax.scatter(
+            x,
+            y,
+            c=z,
+            cmap="plasma",
+            vmin=alt_min,
+            vmax=alt_max,
+            s=3 * (-1 * norm_size(z) + norm_size(alt_max)),
+        )
     ax.set_aspect("equal")
-    ax.set_title(name)
-    cbar = fig.colorbar(scatter)
-    cbar.set_label("Altitude [m]")
+    # ax.set_title(name)
+    # cbar = fig.colorbar(scatter)
+    # cbar.set_label("Altitude [m]")
 
     # Plot points of interest
     if show_water:
@@ -536,6 +608,9 @@ def main(
             )
     ax.set_xlim([extents["west"], extents["east"]])
     ax.set_ylim([extents["south"], extents["north"]])
+    ax.set_axis_off()
+    ax.set_facecolor("None")
+    fig.set_facecolor("None")
     fig.tight_layout()
 
     output_filename = os.path.join(os.path.dirname(gpx_files[0]), f"{name}.png")
