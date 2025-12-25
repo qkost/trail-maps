@@ -113,6 +113,14 @@ ARG_PARSER.add_argument(
 )
 
 ARG_PARSER.add_argument(
+    "--alpha_max",
+    "-M",
+    type=float,
+    help="Maximum alpha value.",
+    default=1,
+)
+
+ARG_PARSER.add_argument(
     "--color_sf",
     "-C",
     type=float,
@@ -482,7 +490,7 @@ def osm_locations(extents):
 
 
 def combine_data_arrays_to_rgba(
-    color_data, alpha_data, color_sf=1.0, alpha_sf=1.0, cmap="gray"
+    color_data, alpha_data, color_sf=1.0, alpha_sf=1.0, cmap="gray", alpha_max=1
 ):
     """
     Combine two arrays to determine the color based on one array and the alpha based
@@ -504,20 +512,26 @@ def combine_data_arrays_to_rgba(
         Defaults to 1.0
     cmap : str, optional
         The colormap to use. Defaults to 'gray'
+    alpha_max : float, optional
+        Maximum alpha for image. Defaults to 1.0
     """
 
     # Define the norm for color
-    vmin_color = 0 * (color_data.max() - color_data.min()) + color_data.min()
-    vmax_color = color_sf * (color_data.max() - color_data.min()) + color_data.min()
+    color_data_min = color_data[color_data != -999999].min()
+    vmin_color = 0 * (color_data.max() - color_data_min) + color_data_min
+    vmax_color = color_sf * (color_data.max() - color_data_min) + color_data_min
     norm_color = mpl.colors.Normalize(vmin=vmin_color, vmax=vmax_color)
 
     # Define the norm for alpha
-    vmin_alpha = 0 * (alpha_data.max() - alpha_data.min()) + alpha_data.min()
-    vmax_alpha = alpha_sf * (alpha_data.max() - alpha_data.min()) + alpha_data.min()
+    alpha_data_min = alpha_data[alpha_data != -999999].min()
+    vmin_alpha = 0 * (alpha_data.max() - alpha_data_min) + alpha_data_min
+    vmax_alpha = alpha_sf * (alpha_data.max() - alpha_data_min) + alpha_data_min
     # norm_alpha = mpl.colors.Normalize(vmin=vmin_alpha, vmax=vmax_alpha)
 
     # Compute color for each pixel based on elevation
     cmap_color = plt.get_cmap(cmap)
+    # cmap_color.set_under("C1")
+    # cmap_color.set_over("C2")
     color_array = cmap_color(norm_color(color_data))
 
     # # Compute alpha for each pixel
@@ -526,6 +540,7 @@ def combine_data_arrays_to_rgba(
         alpha_array = np.ones(alpha_data.shape)
     else:
         alpha_array = np.clip((alpha_data - vmin_alpha) / dynamic_range, 0, 1)
+    alpha_array *= alpha_max
 
     # Keep the color from the color array and the alpha from the alpha array
     image_array = copy.copy(color_array)
@@ -544,6 +559,7 @@ def main(
     cmap="gray",
     color_sf=1.0,
     alpha_sf=1.0,
+    alpha_max=1.0,
     crop_sides=0,
     crop_rotation=90,
 ):
@@ -572,11 +588,14 @@ def main(
         Scale factor for alpha. The maximum alpha value is
         alpha_sf * (alpha_data.max() - alpha_data.min()) + alpha_data.min()
         Defaults to 1.0
+    alpha_max : float, optional
+        Maximum alpha for terrain. Defaults to 1.0
     crop_sides : int, optional
         Number of sides of regular polygon to crop to. If 0 sides, it is a circle.
         Defaults to 0
     crop_rotation : float, optional
         Rotation of crop shape in degrees. Defaults to 90
+
     """
     if len(gpx_files) == 1:
         name = os.path.basename(gpx_files[0]).replace(".gpx", "")
@@ -606,9 +625,16 @@ def main(
     slope = hill_data.values.squeeze().astype(np.float64)
     elev = topo_data.values.squeeze().astype(np.float64)
     no_data = elev == -999999
-    elev[no_data] = elev[~no_data].min()
+    # elev[no_data] = elev[~no_data].min()
+    # slope[no_data] = slope[~no_data].max()
+    # slope[slope == 255] = 0
     image_array = combine_data_arrays_to_rgba(
-        elev, slope, cmap=cmap, color_sf=color_sf, alpha_sf=alpha_sf
+        elev,
+        slope,
+        cmap=cmap,
+        color_sf=color_sf,
+        alpha_sf=alpha_sf,
+        alpha_max=alpha_max,
     )
 
     # Plot
@@ -718,6 +744,7 @@ if __name__ == "__main__":
         cmap=ARGS.cmap,
         color_sf=ARGS.color_sf,
         alpha_sf=ARGS.alpha_sf,
+        alpha_max=ARGS.alpha_max,
         crop_sides=ARGS.crop_sides,
         crop_rotation=ARGS.crop_rotation,
     )
