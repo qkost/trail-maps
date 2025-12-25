@@ -772,7 +772,9 @@ def main(
             y,
             c=colors,
             marker="o",
-            s=10,
+            s=20,
+            edgecolors="black",
+            linewidth=0.1,
         )
     ax.set_aspect("equal")
 
