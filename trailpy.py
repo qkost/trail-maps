@@ -764,25 +764,17 @@ def main(
         x = track[:, 0]
         y = track[:, 1]
         z = track[:, 2]
-        # track_alt = interpolator(np.stack([x, y]).T)
         # line = colored_line_plot(ax, x, y, z, cmap="plasma", norm=None, linewidth=6)
 
+        colors = [color_line_fun(zi) for zi in z]
         scatter = ax.scatter(
             x,
             y,
-            c=color_line_fun(z),
+            c=colors,
             marker="o",
-            # cmap=color_line,
-            # vmin=alt_min,
-            # vmax=alt_max,
             s=10,
-            # edgecolors="black",
-            # linewidth=0.1,
         )
     ax.set_aspect("equal")
-    # ax.set_title(name)
-    # cbar = fig.colorbar(scatter)
-    # cbar.set_label("Altitude [m]")
 
     # Plot points of interest
     if show_water:
